@@ -1,0 +1,28 @@
+A library for Matrix Multiplication
+Author: Martin Smith
+Created on: July 18, 2012
+Last updated: July 20, 2012
+
+Usage:
+
+    - As a library: Mullib.py has a matrix_multiply(A,B) function that will
+      expose the fastest matrix multiplication method available to the library
+      (as determined at runtime).
+
+    - As an experimental system: Mullib.py has a matrix_multiply_test(A,B)
+      function that will allow you to test the speeds of all available
+      methods of matrix multiply.
+
+Contents:
+
+    - naiveFunctions.py: Various functions for performing matrix multiply:
+        - naiveMul: Naive python nested loop version of matrix multiply
+        - numpyMul: Numpy's .dot() function wich farms the operation out to
+          BLAS (which is in C)
+    - oclFunctions.py: Various kernels in a PyOpenCL framework for GPU and
+      CPU accelleration.
+        - MatMul: unoptimized but CPU and GPU compatible version of matrix
+          multiply. Very simple, very robust.
+
+
+More coming!
