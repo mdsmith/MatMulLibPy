@@ -7,6 +7,7 @@ import pyopencl.array as cla
 import numpy as np
 import sys
 
+
 def round_up(number, multiple=1):
     if number == round_down(number, multiple):
         return number
@@ -47,13 +48,29 @@ def pad(matrix, multiple=64):
 def matrix_multiply(A,B):
     ###################################################
     #### CL setup
-    # Platform test
-    deviceOfChoice = 'GPU'
-    #deviceOfChoice = 'CPU'
-    if len(sys.argv) > 1:
-        deviceOfChoice = sys.argv[1]
-    print("Platform of choice: ", deviceOfChoice)
 
+    devices = get_devices()
+    preferred = 'GPU'
+    try:
+        dev = devices[preferred]
+        dev_type = preferred
+        print("Using: ", dev)
+        if dev_type == 'GPU':
+            C = use_GPU(dev, A, B)
+        else:
+            C = use_CPU(dev, A, B)
+    except KeyError:
+        dev,dev_type = devices.getitems()[0]
+        print("Using: ", dev)
+        if dev_type == 'GPU':
+            C = use_GPU(dev, A, B)
+        else:
+            C = use_CPU(dev, A, B)
+    return C
+
+
+
+def get_devices():
     if len(cl.get_platforms()) > 1:
         for found_platform in cl.get_platforms():
             if found_platform.name == 'NVIDIA CUDA':
@@ -61,21 +78,68 @@ def matrix_multiply(A,B):
                 print("Selected platform:", my_platform.name)
     else: my_platform = cl.get_platforms()[0]
 
+    devices = {}
     for device in my_platform.get_devices():
-      dev_type = cl.device_type.to_string(device.type)
-      if dev_type == deviceOfChoice:
-            dev = device
-            print("Selected device: ", dev_type, device)
+      devices[cl.device_type.to_string(device.type)] = device
+    return devices
 
-    max_wg_size = dev.get_info(cl.device_info.MAX_WORK_GROUP_SIZE)
+
+def use_CPU(dev, A, B):
     ctx = cl.Context([dev])
     queue = cl.CommandQueue(ctx)
-    kernel = kernel_text()
+    return use_naive_kernel(ctx, queue, dev, A, B)
 
-    ####
-    ###################################################
-    #### Array setup
+def use_naive_kernel(ctx, queue, dev, A, B):
+    newA, A_shape = pad(A.copy())
+    newB, B_shape = pad(B.copy())
 
+    C_shape = (A.shape[0], B.shape[1])
+    newC_shape = (newA.shape[0], newB.shape[1])
+    newC = np.zeros(newC_shape, dtype=np.float32)
+
+    A_cache = np.array(newA.flatten(), dtype=np.float32)
+    B_cache = np.array(newB.flatten(), dtype=np.float32)
+    C_cache = np.array(newC.flatten(), dtype=np.float32)
+
+    max_wg_size = dev.get_info(cl.device_info.MAX_WORK_GROUP_SIZE)
+    kernel = naive_kernel()
+
+    A_array = cla.to_device(queue, A_cache)
+    B_array = cla.to_device(queue, B_cache)
+    C_array = cla.to_device(queue, C_cache)
+
+    global_size = (round_up(C_cache.shape[0], max_wg_size),)
+    local_size = None
+
+    print("Local Size: ", local_size)
+    print("Global Size: ", global_size)
+
+    prg = cl.Program(ctx, kernel).build()
+
+    event = prg.naiveMatMul( queue,
+                        global_size,
+                        local_size,
+                        A_array.data,
+                        B_array.data,
+                        C_array.data,
+                        np.int32(A_shape[1]),
+                        np.int32(newC.shape[1]),
+                        np.int32(C_shape[0]), # row boundary
+                        np.int32(C_shape[1])) # col boundary
+    event.wait()
+    C_cache = C_array.get().reshape(newC_shape)
+    return C_cache[: C_shape[0], : C_shape[1]]
+
+
+
+def use_GPU(dev, A, B):
+    ctx = cl.Context([dev])
+    queue = cl.CommandQueue(ctx)
+    return use_linear_opt_kernel(ctx, queue, dev, A, B)
+    #return use_naive_kernel(ctx, queue, dev, A, B)
+
+
+def use_linear_opt_kernel(ctx, queue, dev, A, B):
     newA, A_shape = pad(A.copy())
     newB, B_shape = pad(B.copy())
 
@@ -91,53 +155,79 @@ def matrix_multiply(A,B):
     B_array = cla.to_device(queue, B_cache)
     C_array = cla.to_device(queue, C_cache)
 
-    #for shape_name, shape in {'A_shape':A_shape, 'B_shape':B_shape,
-       #'C_shape':C_shape, 'newA_shape':newA.shape, 'newB_shape':newB.shape,
-       #'newC_shape':newC.shape}.items():
-       #print("%s: " % shape_name, shape)
+    max_wg_size = dev.get_info(cl.device_info.MAX_WORK_GROUP_SIZE)
 
-    ####
-    ###################################################
-
-    global_size = (round_up(C_cache.shape[0], max_wg_size),)
-    if deviceOfChoice == 'CPU':
-        local_size = None
-        #local_size = (16,)
-    else:
-        local_size = (min(max_wg_size, global_size[0]),)
+    global_size = (round_up(C_array.shape[0], max_wg_size),)
+    blocksize = 32
+    local_size = (blocksize * blocksize,)
 
     print("Local Size: ", local_size)
     print("Global Size: ", global_size)
 
-    # XXX fix algorithm to not use the global x and y as location identifiers.
-    # XXX fix algorithm to kill useless threads
-
+    kernel = linear_opt_kernel()
     prg = cl.Program(ctx, kernel).build()
-
-    event = prg.MatMul( queue,
+    event =  prg.matMul( queue,
                         global_size,
                         local_size,
                         A_array.data,
                         B_array.data,
                         C_array.data,
                         np.int32(A_shape[1]),
+                        np.int32(newA.shape[1]),
                         np.int32(newC.shape[1]),
                         np.int32(C_shape[0]), # row boundary
                         np.int32(C_shape[1])) # col boundary
     event.wait()
-
-    #print(newA)
-    #print(newB)
     C_cache = C_array.get().reshape(newC_shape)
-    #print(C_cache)
     return C_cache[: C_shape[0], : C_shape[1]]
 
 
+def linear_opt_kernel():
+    return """
+#define BLOCKSIZE 32
+__kernel void matMul(
+                __global float* A,
+                __global float* B,
+                __global float* C,
+                int a_row_len,
+                int a_round_row_len,
+                int c_round_row_len,
+                int row_bound,
+                int col_bound)
+{
+    int g_id = get_global_id(0);
+    int g_col = g_id % c_round_row_len; // could these modifications be reducing performance?
+    int g_row = g_id / c_round_row_len;
 
-def kernel_text():
+    int block_start_row = g_row / BLOCKSIZE;
+    int block_start_col = g_col / BLOCKSIZE;
+
+     int l_id = get_local_id(0);
+     int l_col = l_id % BLOCKSIZE;
+     int l_row = l_id / BLOCKSIZE;
+
+
+    __local float A_cache[BLOCKSIZE*BLOCKSIZE];
+    __local float B_cache[BLOCKSIZE*BLOCKSIZE];
+
+    float sum = 0.0;
+    for (int step = 0; step < a_round_row_len/BLOCKSIZE; step++)
+    {
+        A_cache[get_local_id(0)] = A[block_start_row * a_round_row_len * BLOCKSIZE + step * BLOCKSIZE + l_row * a_round_row_len + l_col];
+        B_cache[get_local_id(0)] = B[block_start_col * BLOCKSIZE + step * c_round_row_len * BLOCKSIZE + l_row * c_round_row_len + l_col];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int i = 0; i < BLOCKSIZE; i++)
+            sum += A_cache[(l_row * BLOCKSIZE) + i] * B_cache[(i * BLOCKSIZE) + l_col];
+    }
+    if (g_row < row_bound && g_col < col_bound)
+        C[g_id] = sum;
+}
+    """
+
+def naive_kernel():
     return """
 
-__kernel void MatMul(
+__kernel void naiveMatMul(
                 __global float* A,
                 __global float* B,
                 __global float* C,
