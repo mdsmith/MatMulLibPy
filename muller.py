@@ -1,5 +1,9 @@
 #! /usr/local/bin/python3
 
+# Author: Martin Smith
+# Created on: 7/18/12
+# Updated on: 7/18/12
+
 from mullib import matrix_multiply
 from mullib import matrix_multiply_test
 import numpy

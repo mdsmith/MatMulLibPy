@@ -1,3 +1,6 @@
+# Author: Martin Smith
+# Created on: 7/18/12
+# Updated on: 7/18/12
 
 
 import time

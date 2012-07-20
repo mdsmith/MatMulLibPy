@@ -1,3 +1,7 @@
+# Author: Martin Smith
+# Created on: 7/18/12
+# Updated on: 7/18/12
+
 import pyopencl as cl
 import pyopencl.array as cla
 import numpy as np
