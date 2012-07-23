@@ -50,11 +50,13 @@ def matrix_multiply_test(A,B):
         C = mmf(A,B)
         print("CPU Time: ", time.clock() - tstart)
         print("Wallclock Time: ", os.times()[-1] - otstart)
-        if (C == goldenC).all() or numpy.sum(numpy.subtract(C, goldenC)) < 0.01:
+        if (C == goldenC).all() or numpy.sum(numpy.subtract(C, goldenC)) < 0.0001:
             result = "PASSED"
+            print(C)
+            print(goldenC)
         else:
             result = "FAILED"
-            #print(C)
-            #print(goldenC)
+            print(C)
+            print(goldenC)
         print("Result: ", result)
     #return matrix_multiply(A,B)
