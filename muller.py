@@ -8,8 +8,8 @@ from mullib import matrix_multiply
 from mullib import matrix_multiply_test
 import numpy
 
-A = numpy.random.random_sample((2000,2000))
-B = numpy.random.random_sample((2000,2000))
+A = numpy.random.random_sample((20000,2000))
+B = numpy.random.random_sample((2000,20000))
 
 def golden(A,B):
     return A.dot(B)

@@ -50,7 +50,7 @@ def matrix_multiply(A,B):
     #### CL setup
 
     devices = get_devices()
-    preferred = 'CPU'
+    preferred = 'GPU'
     try:
         dev = devices[preferred]
         dev_type = preferred
@@ -87,7 +87,8 @@ def get_devices():
 def use_CPU(dev, A, B):
     ctx = cl.Context([dev])
     queue = cl.CommandQueue(ctx)
-    return use_naive_mapped_kernel(ctx, queue, dev, A, B)
+    #return use_naive_mapped_kernel(ctx, queue, dev, A, B)
+    return use_naive_kernel(ctx, queue, dev, A, B)
 
 
 def use_GPU(dev, A, B):
